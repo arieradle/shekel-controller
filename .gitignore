@@ -27,6 +27,12 @@ go.work.sum
 # env file
 .env
 
+# Local development binaries (installed by Makefile / post-create.sh)
+bin/
+
+# Built output
+dist/
+
 # Editor/IDE
 # .idea/
 # .vscode/

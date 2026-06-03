@@ -1,0 +1,319 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: shekelbudgets.shekel.dev
+spec:
+  group: shekel.dev
+  names:
+    categories:
+    - shekel
+    kind: ShekelBudget
+    listKind: ShekelBudgetList
+    plural: shekelbudgets
+    shortNames:
+    - sb
+    singular: shekelbudget
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.maxUsd
+      name: Limit
+      type: string
+    - jsonPath: .status.totalSpent
+      name: Spent
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="BudgetWarning")].status
+      name: Used%
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="BudgetPaused")].reason
+      name: Status
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ShekelBudget declares an LLM spend budget for a group of pods.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ShekelBudgetSpec defines the desired budget policy.
+            properties:
+              enforcement:
+                description: Enforcement controls the backend and flush thresholds
+                  for spend reporting.
+                properties:
+                  backend:
+                    default: k8s
+                    description: |-
+                      Backend selects the enforcement mechanism. k8s uses ConfigMap-based soft enforcement;
+                      redis uses atomic Lua-script hard enforcement. Defaults to k8s.
+                    enum:
+                    - k8s
+                    - redis
+                    type: string
+                  flushEverySeconds:
+                    description: |-
+                      FlushEverySeconds triggers a spend report to Kubernetes at this interval.
+                      Must be > 0 if set.
+                    format: int32
+                    type: integer
+                  flushEveryUsd:
+                    description: |-
+                      FlushEveryUsd triggers a spend report to Kubernetes after this many USD have accumulated locally.
+                      Must be > 0 if set.
+                    type: number
+                type: object
+              fallback:
+                description: Fallback configures automatic model switching as spend
+                  approaches the limit.
+                properties:
+                  atPct:
+                    description: AtPct is the fraction of maxUsd at which the fallback
+                      activates (e.g. 0.9 = 90%).
+                    type: number
+                  model:
+                    description: Model is the model identifier to switch to (e.g.
+                      "gpt-4o-mini").
+                    minLength: 1
+                    type: string
+                required:
+                - atPct
+                - model
+                type: object
+              maxUsd:
+                description: MaxUsd is the hard USD spending cap for the period. Required,
+                  must be > 0.
+                type: number
+              period:
+                default: none
+                description: Period defines when the budget resets. Defaults to none
+                  (no automatic reset).
+                enum:
+                - monthly
+                - daily
+                - rolling-24h
+                - none
+                type: string
+              scope:
+                description: Scope controls how spend is partitioned across matching
+                  pods.
+                properties:
+                  groupBy:
+                    description: |-
+                      GroupBy is the pod label key used to partition spend in per-group mode.
+                      Required when mode is per-group.
+                    type: string
+                  mode:
+                    default: shared
+                    description: |-
+                      Mode determines whether pods share a single budget, each have their own, or are grouped by label.
+                      Defaults to shared.
+                    enum:
+                    - shared
+                    - per-pod
+                    - per-group
+                    type: string
+                  perPodCap:
+                    description: |-
+                      PerPodCap is an optional secondary USD ceiling per individual pod.
+                      Applies in addition to the shared/group limit.
+                    type: number
+                type: object
+              selector:
+                description: Selector identifies which pods this budget applies to.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              warnAt:
+                description: |-
+                  WarnAt is the fraction of maxUsd at which a BudgetWarning condition is raised (e.g. 0.8 = 80%).
+                  Must be in [0, 1]. Defaults to 0.8.
+                type: number
+            required:
+            - maxUsd
+            - selector
+            type: object
+            x-kubernetes-validations:
+            - message: maxUsd must be greater than 0
+              rule: self.maxUsd > 0
+            - message: warnAt must be between 0 and 1
+              rule: '!has(self.warnAt) || (self.warnAt >= 0.0 && self.warnAt <= 1.0)'
+            - message: groupBy is required when scope.mode is per-group
+              rule: self.scope.mode != 'per-group' || (has(self.scope.groupBy) &&
+                self.scope.groupBy != '')
+            - message: flushEveryUsd must be greater than 0
+              rule: '!has(self.enforcement.flushEveryUsd) || self.enforcement.flushEveryUsd
+                > 0'
+            - message: flushEverySeconds must be greater than 0
+              rule: '!has(self.enforcement.flushEverySeconds) || self.enforcement.flushEverySeconds
+                > 0'
+          status:
+            description: ShekelBudgetStatus is written by the controller and reflects
+              observed spend state.
+            properties:
+              conditions:
+                description: Conditions reflect the current state of the budget.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              groups:
+                description: Groups holds per-group spend breakdowns. Populated only
+                  when scope.mode=per-group.
+                items:
+                  description: GroupStatus reports per-group spend in per-group scope
+                    mode.
+                  properties:
+                    key:
+                      description: Key is the value of the groupBy label for this
+                        group.
+                      type: string
+                    spent:
+                      description: Spent is the aggregated USD spend for this group
+                        in the current period.
+                      type: number
+                  required:
+                  - key
+                  - spent
+                  type: object
+                type: array
+              lastFlush:
+                description: LastFlush is the timestamp of the most recent spend report
+                  received from any pod.
+                format: date-time
+                type: string
+              participatingPods:
+                description: ParticipatingPods is the number of pods currently reporting
+                  spend.
+                format: int32
+                type: integer
+              periodStart:
+                description: PeriodStart is the beginning of the current budget period.
+                format: date-time
+                type: string
+              totalSpent:
+                description: TotalSpent is the aggregated USD spent by all participating
+                  pods in the current period.
+                type: number
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
