@@ -1,5 +1,3 @@
-version: "2"
-
 linters:
   enable:
     - govet
@@ -14,13 +12,11 @@ linters-settings:
   govet:
     enable-all: true
     disable:
-      - fieldalignment  # not worth optimising for controller types
+      - fieldalignment
 
 issues:
   exclude-rules:
-    # Generated deepcopy code does not need errcheck
     - path: zz_generated
       linters: [errcheck]
-    # Test files can use dot-imports (gomega)
     - path: _test\.go
       linters: [staticcheck]
