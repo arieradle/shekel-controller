@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -62,6 +63,19 @@ type ScopeSpec struct {
 	PerPodCap *float64 `json:"perPodCap,omitempty"`
 }
 
+// RedisSpec configures the Redis enforcement backend.
+type RedisSpec struct {
+	// SecretRef references a Secret key whose value is the Redis connection URL.
+	// Supported formats: redis://host:port, rediss://host:port (TLS), redis://:password@host:port
+	SecretRef corev1.SecretKeySelector `json:"secretRef"`
+
+	// OnUnavailable controls behaviour when Redis is unreachable.
+	// closed (default): raise BudgetExceededError. open: allow calls through.
+	// +kubebuilder:default=closed
+	// +kubebuilder:validation:Enum=closed;open
+	OnUnavailable string `json:"onUnavailable,omitempty"`
+}
+
 // EnforcementSpec controls how and when spend is flushed and enforced.
 type EnforcementSpec struct {
 	// Backend selects the enforcement mechanism. k8s uses ConfigMap-based soft enforcement;
@@ -87,6 +101,8 @@ type EnforcementSpec struct {
 // +kubebuilder:validation:XValidation:rule="self.scope.mode != 'per-group' || (has(self.scope.groupBy) && self.scope.groupBy != '')",message="groupBy is required when scope.mode is per-group"
 // +kubebuilder:validation:XValidation:rule="!has(self.enforcement.flushEveryUsd) || self.enforcement.flushEveryUsd > 0",message="flushEveryUsd must be greater than 0"
 // +kubebuilder:validation:XValidation:rule="!has(self.enforcement.flushEverySeconds) || self.enforcement.flushEverySeconds > 0",message="flushEverySeconds must be greater than 0"
+// +kubebuilder:validation:XValidation:rule="self.enforcement.backend != 'redis' || has(self.redis)",message="redis spec is required when enforcement.backend is redis"
+// +kubebuilder:validation:XValidation:rule="self.scope.mode != 'per-pod' || self.enforcement.backend != 'redis'",message="redis backend is not supported with per-pod scope"
 type ShekelBudgetSpec struct {
 	// MaxUsd is the hard USD spending cap for the period. Required, must be > 0.
 	MaxUsd float64 `json:"maxUsd"`
@@ -111,6 +127,15 @@ type ShekelBudgetSpec struct {
 	// Enforcement controls the backend and flush thresholds for spend reporting.
 	// +optional
 	Enforcement EnforcementSpec `json:"enforcement,omitempty"`
+
+	// MaxLLMCalls is a hard cap on the number of LLM API calls per period.
+	// +optional
+	MaxLLMCalls *int32 `json:"maxLLMCalls,omitempty"`
+
+	// Redis configures the Redis enforcement backend.
+	// Required when enforcement.backend is redis.
+	// +optional
+	Redis *RedisSpec `json:"redis,omitempty"`
 
 	// Selector identifies which pods this budget applies to.
 	Selector metav1.LabelSelector `json:"selector"`

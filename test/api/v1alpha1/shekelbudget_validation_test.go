@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
@@ -247,5 +248,65 @@ func TestPeriodEnum(t *testing.T) {
 				g.Expect(k8sClient.Delete(ctx, b)).To(Succeed())
 			})
 		}
+	})
+}
+
+func TestRedisSpec(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("redis backend without redis spec is rejected", func(t *testing.T) {
+		g := NewWithT(t)
+		b := budget("redis-no-spec", 10, func(b *shekelv1alpha1.ShekelBudget) {
+			b.Spec.Enforcement = shekelv1alpha1.EnforcementSpec{Backend: shekelv1alpha1.BackendRedis}
+		})
+		err := k8sClient.Create(ctx, b)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("redis spec is required"))
+	})
+
+	t.Run("redis backend with redis spec is accepted", func(t *testing.T) {
+		g := NewWithT(t)
+		b := budget("redis-with-spec", 10, func(b *shekelv1alpha1.ShekelBudget) {
+			b.Spec.Enforcement = shekelv1alpha1.EnforcementSpec{Backend: shekelv1alpha1.BackendRedis}
+			b.Spec.Redis = &shekelv1alpha1.RedisSpec{
+				SecretRef: corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "redis-creds"},
+					Key:                  "REDIS_URL",
+				},
+			}
+		})
+		g.Expect(k8sClient.Create(ctx, b)).To(Succeed())
+		g.Expect(k8sClient.Delete(ctx, b)).To(Succeed())
+	})
+
+	t.Run("per-pod scope with redis backend is rejected", func(t *testing.T) {
+		g := NewWithT(t)
+		b := budget("redis-per-pod", 10, func(b *shekelv1alpha1.ShekelBudget) {
+			b.Spec.Scope = shekelv1alpha1.ScopeSpec{Mode: shekelv1alpha1.ScopeModePerPod}
+			b.Spec.Enforcement = shekelv1alpha1.EnforcementSpec{Backend: shekelv1alpha1.BackendRedis}
+			b.Spec.Redis = &shekelv1alpha1.RedisSpec{
+				SecretRef: corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "redis-creds"},
+					Key:                  "REDIS_URL",
+				},
+			}
+		})
+		err := k8sClient.Create(ctx, b)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("redis backend is not supported with per-pod scope"))
+	})
+}
+
+func TestMaxLLMCalls(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("maxLLMCalls is accepted", func(t *testing.T) {
+		g := NewWithT(t)
+		calls := int32(500)
+		b := budget("max-calls-ok", 10, func(b *shekelv1alpha1.ShekelBudget) {
+			b.Spec.MaxLLMCalls = &calls
+		})
+		g.Expect(k8sClient.Create(ctx, b)).To(Succeed())
+		g.Expect(k8sClient.Delete(ctx, b)).To(Succeed())
 	})
 }
