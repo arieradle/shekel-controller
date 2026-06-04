@@ -2,8 +2,6 @@ module github.com/arieradle/shekel-controller
 
 go 1.24.0
 
-toolchain go1.26.1
-
 require (
 	github.com/onsi/gomega v1.41.0
 	k8s.io/api v0.31.3
