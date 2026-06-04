@@ -67,6 +67,7 @@ func req(name, ns string) ctrl.Request {
 // ── Reconcile tests ───────────────────────────────────────────────────────────
 
 func TestReconcile_NotFound(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	s := testScheme(t)
 	r := reconciler(s) // no objects
@@ -82,6 +83,7 @@ func TestReconcile_NotFound(t *testing.T) {
 }
 
 func TestReconcile_CreateConfigMap(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	s := testScheme(t)
 	budget := minimalBudget("test-budget", "default")
@@ -99,6 +101,7 @@ func TestReconcile_CreateConfigMap(t *testing.T) {
 }
 
 func TestReconcile_AllOptionalFields(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	s := testScheme(t)
 
@@ -140,6 +143,7 @@ func TestReconcile_AllOptionalFields(t *testing.T) {
 }
 
 func TestReconcile_OmitsNilFields(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	s := testScheme(t)
 	budget := minimalBudget("minimal", "default") // no optional fields
@@ -160,6 +164,7 @@ func TestReconcile_OmitsNilFields(t *testing.T) {
 }
 
 func TestReconcile_OwnerReference(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	s := testScheme(t)
 	budget := minimalBudget("owned", "default")
@@ -177,6 +182,7 @@ func TestReconcile_OwnerReference(t *testing.T) {
 }
 
 func TestReconcile_Idempotent(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	s := testScheme(t)
 	budget := minimalBudget("idem", "default")
@@ -199,6 +205,7 @@ func TestReconcile_Idempotent(t *testing.T) {
 }
 
 func TestReconcile_UpdateOnChange(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	s := testScheme(t)
 	budget := minimalBudget("changing", "default")
@@ -222,6 +229,7 @@ func TestReconcile_UpdateOnChange(t *testing.T) {
 }
 
 func TestReconcile_StatusConditionSet(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	s := testScheme(t)
 	budget := minimalBudget("conditioned", "default")
@@ -246,6 +254,7 @@ func TestReconcile_StatusConditionSet(t *testing.T) {
 // ── buildConfigMap unit tests ─────────────────────────────────────────────────
 
 func TestBuildConfigMap_Minimal(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	budget := minimalBudget("min", "ns1")
 	cm := buildConfigMap(budget)
@@ -261,6 +270,7 @@ func TestBuildConfigMap_Minimal(t *testing.T) {
 }
 
 func TestBuildConfigMap_Full(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	warnAt := 0.75
 	perPodCap := 5.5
@@ -297,6 +307,7 @@ func TestBuildConfigMap_Full(t *testing.T) {
 // ── Error path tests ──────────────────────────────────────────────────────────
 
 func TestReconcile_GetBudgetError(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	s := testScheme(t)
 	budget := minimalBudget("err-budget", "default")
@@ -325,6 +336,7 @@ func TestReconcile_GetBudgetError(t *testing.T) {
 }
 
 func TestReconcile_GetConfigMapError(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	s := testScheme(t)
 	budget := minimalBudget("cm-get-err", "default")
@@ -349,6 +361,7 @@ func TestReconcile_GetConfigMapError(t *testing.T) {
 }
 
 func TestReconcile_CreateError(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	s := testScheme(t)
 	budget := minimalBudget("create-err", "default")
@@ -373,6 +386,7 @@ func TestReconcile_CreateError(t *testing.T) {
 }
 
 func TestReconcile_UpdateError(t *testing.T) {
+	t.Parallel()
 	g := NewWithT(t)
 	s := testScheme(t)
 	budget := minimalBudget("update-err", "default")
@@ -404,6 +418,7 @@ func TestReconcile_UpdateError(t *testing.T) {
 // ── mapsEqual unit tests ──────────────────────────────────────────────────────
 
 func TestMapsEqual(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		a, b     map[string]string
