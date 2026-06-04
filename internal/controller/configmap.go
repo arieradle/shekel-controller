@@ -51,6 +51,13 @@ func buildConfigMap(budget *shekelv1alpha1.ShekelBudget) *corev1.ConfigMap {
 	if spec.Enforcement.FlushEverySeconds != nil {
 		data["flush_every_seconds"] = fmt.Sprintf("%d", *spec.Enforcement.FlushEverySeconds)
 	}
+	if spec.MaxLLMCalls != nil {
+		data["max_llm_calls"] = fmt.Sprintf("%d", *spec.MaxLLMCalls)
+	}
+	if spec.Enforcement.Backend == shekelv1alpha1.BackendRedis {
+		data["redis_key"] = fmt.Sprintf("shekel:%s:%s", budget.Namespace, budget.Name)
+		data["redis_key_group_tpl"] = fmt.Sprintf("shekel:%s:%s:{group}", budget.Namespace, budget.Name)
+	}
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{

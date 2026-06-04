@@ -101,6 +101,11 @@ spec:
                 - atPct
                 - model
                 type: object
+              maxLLMCalls:
+                description: MaxLLMCalls is a hard cap on the number of LLM API calls
+                  per period.
+                format: int32
+                type: integer
               maxUsd:
                 description: MaxUsd is the hard USD spending cap for the period. Required,
                   must be > 0.
@@ -115,6 +120,49 @@ spec:
                 - rolling-24h
                 - none
                 type: string
+              redis:
+                description: |-
+                  Redis configures the Redis enforcement backend.
+                  Required when enforcement.backend is redis.
+                properties:
+                  onUnavailable:
+                    default: closed
+                    description: |-
+                      OnUnavailable controls behaviour when Redis is unreachable.
+                      closed (default): raise BudgetExceededError. open: allow calls through.
+                    enum:
+                    - closed
+                    - open
+                    type: string
+                  secretRef:
+                    description: |-
+                      SecretRef references a Secret key whose value is the Redis connection URL.
+                      Supported formats: redis://host:port, rediss://host:port (TLS), redis://:password@host:port
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                required:
+                - secretRef
+                type: object
               scope:
                 description: Scope controls how spend is partitioned across matching
                   pods.
@@ -209,6 +257,10 @@ spec:
             - message: flushEverySeconds must be greater than 0
               rule: '!has(self.enforcement.flushEverySeconds) || self.enforcement.flushEverySeconds
                 > 0'
+            - message: redis spec is required when enforcement.backend is redis
+              rule: self.enforcement.backend != 'redis' || has(self.redis)
+            - message: redis backend is not supported with per-pod scope
+              rule: self.scope.mode != 'per-pod' || self.enforcement.backend != 'redis'
           status:
             description: ShekelBudgetStatus is written by the controller and reflects
               observed spend state.

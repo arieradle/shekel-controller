@@ -415,6 +415,36 @@ func TestReconcile_UpdateError(t *testing.T) {
 	g.Expect(err.Error()).To(ContainSubstring("update failed"))
 }
 
+func TestBuildConfigMap_MaxLLMCalls(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+	calls := int32(1000)
+	budget := minimalBudget("calls", "ns")
+	budget.Spec.MaxLLMCalls = &calls
+	cm := buildConfigMap(budget)
+	g.Expect(cm.Data["max_llm_calls"]).To(Equal("1000"))
+}
+
+func TestBuildConfigMap_RedisKey(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+	budget := minimalBudget("mybudget", "mynamespace")
+	budget.Spec.Enforcement = shekelv1alpha1.EnforcementSpec{Backend: shekelv1alpha1.BackendRedis}
+	cm := buildConfigMap(budget)
+	g.Expect(cm.Data["redis_key"]).To(Equal("shekel:mynamespace:mybudget"))
+	g.Expect(cm.Data["redis_key_group_tpl"]).To(Equal("shekel:mynamespace:mybudget:{group}"))
+}
+
+func TestBuildConfigMap_NoRedisKey(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+	budget := minimalBudget("mybudget", "mynamespace")
+	budget.Spec.Enforcement = shekelv1alpha1.EnforcementSpec{Backend: shekelv1alpha1.BackendK8s}
+	cm := buildConfigMap(budget)
+	g.Expect(cm.Data).NotTo(HaveKey("redis_key"))
+	g.Expect(cm.Data).NotTo(HaveKey("redis_key_group_tpl"))
+}
+
 // ── mapsEqual unit tests ──────────────────────────────────────────────────────
 
 func TestMapsEqual(t *testing.T) {
