@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install tools
+        run: make controller-gen envtest
+
+      - name: Verify generated files are up to date
+        run: |
+          make generate manifests
+          if ! git diff --exit-code; then
+            echo "Generated files are out of date. Run 'make generate manifests' and commit the result."
+            exit 1
+          fi
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+      - name: Test with coverage
+        run: |
+          KUBEBUILDER_ASSETS="$(bin/setup-envtest use 1.31.0 --bin-dir $(pwd)/bin -p path)" \
+            go test ./... \
+              -coverprofile=cover.out \
+              -covermode=atomic \
+              -coverpkg=./internal/...
+
+      - name: Check coverage ≥ 95%
+        run: |
+          COVERAGE=$(go tool cover -func=cover.out | grep "^total:" | awk '{print $3}' | tr -d '%')
+          echo "Coverage: ${COVERAGE}%"
+          if [ "$(echo "$COVERAGE < 95" | bc -l)" -eq 1 ]; then
+            echo "::error::Coverage ${COVERAGE}% is below the required 95% threshold"
+            exit 1
+          fi
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: cover.out
+          retention-days: 7
