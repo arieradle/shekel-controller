@@ -132,6 +132,12 @@ type ShekelBudgetSpec struct {
 	// +optional
 	MaxLLMCalls *int32 `json:"maxLLMCalls,omitempty"`
 
+	// PodServiceAccount is the ServiceAccount name that agent pods run as.
+	// The controller creates a Role + RoleBinding bound to this SA so pods can
+	// read the Budget ConfigMap and write Spend Report ConfigMaps.
+	// +kubebuilder:default=default
+	PodServiceAccount string `json:"podServiceAccount,omitempty"`
+
 	// Redis configures the Redis enforcement backend.
 	// Required when enforcement.backend is redis.
 	// +optional
