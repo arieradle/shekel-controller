@@ -1266,6 +1266,133 @@ func TestResetPeriod_ReportListError(t *testing.T) {
 
 // ── mapsEqual unit tests ──────────────────────────────────────────────────────
 
+// TestReconcile_PeriodStartPatch_SecondCallError covers the error path at the
+// PeriodStart status patch (line ~95): first SubResourcePatch (setReconciled after
+// CM create) succeeds; the second one (PeriodStart init) fails.
+func TestReconcile_PeriodStartPatch_SecondCallError(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+	s := testScheme(t)
+	budget := minimalBudget("ps-patch-2nd-err", "default")
+
+	patchCalls := 0
+	c := fake.NewClientBuilder().
+		WithScheme(s).WithObjects(budget).
+		WithStatusSubresource(&shekelv1alpha1.ShekelBudget{}).
+		WithInterceptorFuncs(interceptor.Funcs{
+			SubResourcePatch: func(ctx context.Context, cl client.Client, subResourceName string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+				patchCalls++
+				if patchCalls >= 2 {
+					return fmt.Errorf("period start patch error")
+				}
+				return cl.Status().Patch(ctx, obj, patch, opts...)
+			},
+		}).Build()
+	r := &ShekelBudgetReconciler{Client: c, Scheme: s}
+
+	_, err := r.Reconcile(context.Background(), req("ps-patch-2nd-err", "default"))
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("period start patch error"))
+}
+
+// TestReconcile_SetReconciledAfterCMUpdateError covers the error path where the
+// ConfigMap is updated (data drift) but the subsequent setReconciled status patch fails.
+func TestReconcile_SetReconciledAfterCMUpdateError(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+	s := testScheme(t)
+	budget := minimalBudget("cm-upd-reconciled-err", "default")
+	staleCM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "shekel-budget-cm-upd-reconciled-err", Namespace: "default",
+			Labels: map[string]string{
+				"shekel.dev/managed-by": "shekel-controller",
+				"shekel.dev/budget":     "cm-upd-reconciled-err",
+			},
+		},
+		Data: map[string]string{
+			"budget_name": "cm-upd-reconciled-err", "budget_namespace": "default",
+			"max_usd": "999.0000", "period": "none", "scope_mode": "shared",
+			"backend": "k8s", "paused": "false",
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(s).WithObjects(budget, staleCM).
+		WithStatusSubresource(&shekelv1alpha1.ShekelBudget{}).
+		WithInterceptorFuncs(interceptor.Funcs{
+			SubResourcePatch: func(ctx context.Context, cl client.Client, subResourceName string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+				return fmt.Errorf("reconciled after update patch error")
+			},
+		}).Build()
+	r := &ShekelBudgetReconciler{Client: c, Scheme: s}
+
+	_, err := r.Reconcile(context.Background(), req("cm-upd-reconciled-err", "default"))
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("reconciled after update patch error"))
+}
+
+// TestReconcile_KillSwitch_ActivationUpdateError covers the error path where the
+// kill-switch CM update (setting paused=true) fails.
+func TestReconcile_KillSwitch_ActivationUpdateError(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+	s := testScheme(t)
+	budget := minimalBudget("ks-act-upd-err", "default") // maxUsd=100
+	now := metav1.Now()
+	budget.Status.PeriodStart = &now
+	report := makeSpendReport("pod-a", "ks-act-upd-err", "default", "150.0", 5*time.Second, "")
+
+	c := fake.NewClientBuilder().
+		WithScheme(s).WithObjects(budget, report).
+		WithStatusSubresource(&shekelv1alpha1.ShekelBudget{}).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Update: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+				if cm, ok := obj.(*corev1.ConfigMap); ok && cm.Data != nil && cm.Data["paused"] == "true" {
+					return fmt.Errorf("kill-switch activation update error")
+				}
+				return cl.Update(ctx, obj, opts...)
+			},
+		}).Build()
+	r := &ShekelBudgetReconciler{Client: c, Scheme: s}
+
+	_, err := r.Reconcile(context.Background(), req("ks-act-upd-err", "default"))
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("kill-switch activation update error"))
+}
+
+// TestResetPeriod_GroupCMNilData covers the cm.Data==nil defensive branch in
+// resetPeriod when a group CM exists with no data (nil map).
+func TestResetPeriod_GroupCMNilData(t *testing.T) {
+	t.Parallel()
+	g := NewWithT(t)
+	s := testScheme(t)
+	ctx := context.Background()
+
+	budget := minimalBudget("rst-nil-data", "default")
+	budget.Spec.Period = shekelv1alpha1.PeriodDaily
+	past := metav1.NewTime(time.Now().Add(-25 * time.Hour))
+	budget.Status.PeriodStart = &past
+
+	nilDataGroupCM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "shekel-budget-rst-nil-data-teamA", Namespace: "default",
+			Labels: map[string]string{
+				labelBudget: "rst-nil-data",
+				labelCMType: cmTypeBudgetGroup,
+			},
+		},
+	}
+	r := reconciler(s, budget, nilDataGroupCM)
+
+	_, err := r.Reconcile(ctx, req("rst-nil-data", "default"))
+	g.Expect(err).NotTo(HaveOccurred())
+
+	updated := &corev1.ConfigMap{}
+	g.Expect(r.Get(ctx, types.NamespacedName{Name: "shekel-budget-rst-nil-data-teamA", Namespace: "default"}, updated)).To(Succeed())
+	g.Expect(updated.Data["paused"]).To(Equal("false"))
+}
+
 func TestMapsEqual(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
