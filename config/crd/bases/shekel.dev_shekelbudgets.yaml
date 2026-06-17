@@ -120,6 +120,13 @@ spec:
                 - rolling-24h
                 - none
                 type: string
+              podServiceAccount:
+                default: default
+                description: |-
+                  PodServiceAccount is the ServiceAccount name that agent pods run as.
+                  The controller creates a Role + RoleBinding bound to this SA so pods can
+                  read the Budget ConfigMap and write Spend Report ConfigMaps.
+                type: string
               redis:
                 description: |-
                   Redis configures the Redis enforcement backend.
